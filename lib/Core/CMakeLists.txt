@@ -27,6 +27,7 @@ add_library(kleeCore
   StatsTracker.cpp
   TimingSolver.cpp
   UserSearcher.cpp
+  BoncRound.cpp
 )
 
 target_link_libraries(kleeCore PRIVATE

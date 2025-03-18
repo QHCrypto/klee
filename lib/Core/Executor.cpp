@@ -10,6 +10,7 @@
 #include "Executor.h"
 
 #include "AddressSpace.h"
+#include "BoncRound.h"
 #include "Context.h"
 #include "CoreStats.h"
 #include "ExecutionState.h"
@@ -1937,6 +1938,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       klee_warning("Maximum stack size reached.");
       return;
     }
+    bonc::beforeEnterRound(this, state, ki, f, arguments);
 
     // FIXME: I'm not really happy about this reliance on prevPC but it is ok, I
     // guess. This just done to avoid having to pass KInstIterator everywhere
@@ -2213,6 +2215,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
     }      
+    bonc::afterExitRound(this, state, caller);
     break;
   }
   case Instruction::Br: {
@@ -4495,6 +4498,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             terminateStateOnProgramError(state, "memory error: object read only",
                                          StateTerminationType::ReadOnly);
           } else {
+            bonc::recordWrite(this, state, mo, value);
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
           }
