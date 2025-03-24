@@ -10,12 +10,12 @@
 #include "Executor.h"
 
 #include "AddressSpace.h"
-#include "BoncRound.h"
 #include "Context.h"
 #include "CoreStats.h"
 #include "ExecutionState.h"
 #include "ExecutionTree.h"
 #include "ExternalDispatcher.h"
+#include "llvm/IR/Intrinsics.h"
 #if LLVM_VERSION_CODE <= LLVM_VERSION(14, 0)
 #include "GetElementPtrTypeIterator.h"
 #endif
@@ -890,6 +890,7 @@ bool Executor::branchingPermitted(const ExecutionState &state) const {
     else
       klee_warning_once(0, "skipping fork (max-forks reached)");
 
+    abort();
     return false;
   }
 
@@ -1916,6 +1917,11 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // with va_end, however (like call it twice).
       break;
 
+    case Intrinsic::bonc_loop_enter:
+    case Intrinsic::bonc_loop_exit:
+      klee_warning("bonc enter|exit should not be handled at here");
+      break;
+
     case Intrinsic::vacopy:
       // va_copy should have been lowered.
       //
@@ -1938,7 +1944,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       klee_warning("Maximum stack size reached.");
       return;
     }
-    bonc::beforeEnterRound(this, state, ki, f, arguments);
+    bonc.beforeEnterRoundFn(this, state, i, arguments);
 
     // FIXME: I'm not really happy about this reliance on prevPC but it is ok, I
     // guess. This just done to avoid having to pass KInstIterator everywhere
@@ -2215,7 +2221,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         }
       }
     }      
-    bonc::afterExitRound(this, state, caller);
+    bonc.afterExitRoundFn(this, state, caller, i, result);
     break;
   }
   case Instruction::Br: {
@@ -2456,6 +2462,35 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Value *fp = cb.getCalledOperand();
     unsigned numArgs = cb.arg_size();
     Function *f = getTargetFunction(fp);
+
+    if (f) {
+      auto intrinsic_id = f->getIntrinsicID();
+      if (intrinsic_id == Intrinsic::bonc_loop_enter) {
+        if (i->getNumOperands() < 1) {
+          klee_warning("bonc.loop.enter should have one operand");
+          break;
+        }
+        auto bb = cast<BasicBlock>(i->getOperand(0));
+        if (!bb) {
+          klee_warning("bonc.loop.enter should have a basic block label as operand");
+          break;
+        }
+        bonc.beforeEnterRoundLoop(this, state, bb);
+        break;
+      } else if (intrinsic_id == Intrinsic::bonc_loop_exit) {
+        if (i->getNumOperands() < 1) {
+          klee_warning("bonc.loop.exit should have one operand");
+          break;
+        }
+        auto bb = cast<BasicBlock>(i->getOperand(0));
+        if (!bb) {
+          klee_warning("bonc.loop.exit should have a basic block label as operand");
+          break;
+        }
+        bonc.afterExitRoundLoop(this, state, bb);
+        break;
+      }
+    }
 
     // evaluate arguments
     std::vector< ref<Expr> > arguments;
@@ -4498,7 +4533,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             terminateStateOnProgramError(state, "memory error: object read only",
                                          StateTerminationType::ReadOnly);
           } else {
-            bonc::recordWrite(this, state, mo, value);
+            bonc.recordWrite(this, state, mo, value);
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
           }

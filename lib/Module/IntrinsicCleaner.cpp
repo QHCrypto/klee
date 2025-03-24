@@ -79,6 +79,8 @@ bool IntrinsicCleanerPass::runOnBasicBlock(BasicBlock &b, Module &M) {
       case Intrinsic::umax:
       case Intrinsic::umin:
 #endif
+      case Intrinsic::bonc_loop_enter:
+      case Intrinsic::bonc_loop_exit:
         break;
 
         // Lower vacopy so that object resolution etc is handled by

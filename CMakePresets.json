@@ -1,0 +1,44 @@
+{
+  "version": 10,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "bonc",
+      "binaryDir": "${sourceDir}/build",
+      "installDir": "${sourceDir}/install",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ENABLE_SYSTEM_TESTS": "OFF",
+        "ENABLE_UNIT_TESTS": "off",
+        "LLVM_DIR": "${sourceDir}/../../2025.3/llvm-project/install"
+      },
+      "generator": "Ninja"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "bonc",
+      "configurePreset": "bonc",
+      "jobs": 24
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "bonc",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "bonc"
+        },
+        {
+          "type": "build",
+          "name": "bonc"
+        }
+      ]
+    }
+  ]
+}

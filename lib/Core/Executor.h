@@ -15,6 +15,7 @@
 #ifndef KLEE_EXECUTOR_H
 #define KLEE_EXECUTOR_H
 
+#include "BoncController.h"
 #include "ExecutionState.h"
 #include "UserSearcher.h"
 
@@ -95,6 +96,7 @@ class Executor : public Interpreter {
   friend class StatsTracker;
   friend class MergeHandler;
   friend class ObjectState;
+  friend class bonc::BoncControllerImpl;
   friend klee::Searcher *klee::constructUserSearcher(Executor &executor);
 
 public:
@@ -207,6 +209,8 @@ private:
 
   /// Typeids used during exception handling
   std::vector<ref<Expr>> eh_typeids;
+
+  bonc::BoncController bonc;
 
   /// Return the typeid corresponding to a certain `type_info`
   ref<ConstantExpr> getEhTypeidFor(ref<Expr> type_info);
