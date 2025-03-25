@@ -28,6 +28,7 @@ add_library(kleeCore
   TimingSolver.cpp
   UserSearcher.cpp
   BoncController.cpp
+  BoncBitExpr.cpp
 )
 
 target_link_libraries(kleeCore PRIVATE

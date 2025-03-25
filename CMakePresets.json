@@ -11,6 +11,7 @@
       "binaryDir": "${sourceDir}/build",
       "installDir": "${sourceDir}/install",
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "ENABLE_SYSTEM_TESTS": "OFF",
         "ENABLE_UNIT_TESTS": "off",
