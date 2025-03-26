@@ -7,6 +7,8 @@
 #include "klee/Expr/Expr.h"
 #include "llvm-13/llvm/IR/InstrTypes.h"
 #include "llvm/IR/BasicBlock.h"
+#include <climits>
+#include <string>
 
 #define LOG klee_message
 
@@ -63,34 +65,62 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
     auto index_expr = read_expr->index;
     auto read_root = read_expr->updates.root;
     if (read_root->isSymbolicArray()) {
-      auto indexConstant = dyn_cast<ConstantExpr>(index_expr);
-      if (!indexConstant) {
+      auto index_constant = dyn_cast<ConstantExpr>(index_expr);
+      if (!index_constant) {
         LOG("Unsupported: read expression with symbolic array root (%s) at a "
             "non-constant index",
             read_root->name.c_str());
         abort();
       }
-      // SBOX
-      LOG("Read expression with symbolic array root (%s) at index %" PRIx64,
-          read_root->name.c_str(), indexConstant->getZExtValue());
-      ;
-      // TODO TEMPORARY RESULT
-      return std::vector<ref<BitExpr>>(
-          bit_offsets.size(),
-          ReadBitExpr::create(ReadTarget::create(ReadTarget::Invalid), 0));
+      auto targetKind = ReadTarget::Invalid;
+      unsigned target_round_index = 0, target_block_index = 0;
+      if (auto index = read_root->name.find("bonc::state/");
+          index != std::string::npos) {
+        targetKind = ReadTarget::State;
+        auto index_str = read_root->name.substr(index + 12);
+        std::size_t block_id_idx = 0u;
+        target_round_index = std::stoi(index_str, &block_id_idx);
+        block_id_idx++;
+        target_block_index = std::stoi(index_str.substr(block_id_idx));
+      } else if (read_root->name.find("key") != std::string::npos) {
+        targetKind = ReadTarget::Key;
+      } else if (read_root->name.find("plaintext") != std::string::npos) {
+        targetKind = ReadTarget::Plaintext;
+      } else if (read_root->name.find("iv") != std::string::npos) {
+        targetKind = ReadTarget::IV;
+      } else if (read_root->name.find("nonce") != std::string::npos) {
+        targetKind = ReadTarget::Nonce;
+      }
+
+      auto target =
+          targetKind == ReadTarget::State
+              ? ReadTarget::createState(target_round_index, target_block_index)
+              : ReadTarget::create(targetKind);
+
+      std::vector<ref<BitExpr>> result;
+      for (auto o : bit_offsets) {
+        result.push_back(ReadBitExpr::create(
+            target, index_constant->getZExtValue() * CHAR_BIT + o));
+      }
+      return result;
     }
+    // S-box lookup
     if (!read_root->isConstantArray()) {
       LOG("Read expression with non-constant array root (%s)",
           read_root->name.c_str());
       abort();
     }
-    LOG("Read expr %s (with size of %zu)",
-        read_expr->updates.root->name.c_str(),
-        read_root->constantValues.size());
-    // TODO TEMPORARY RESULT
-    return std::vector<ref<BitExpr>>(
-        bit_offsets.size(),
-        ReadBitExpr::create(ReadTarget::create(ReadTarget::Invalid), 0));
+    auto input_width = CHAR_BIT * sizeof(unsigned long long) -
+                       __builtin_clzll(static_cast<unsigned long long>(
+                           read_root->constantValues.size() - 1));
+    std::vector<unsigned> input_bit_offsets(input_width);
+    std::iota(input_bit_offsets.begin(), input_bit_offsets.end(), 0u);
+    auto input_bits = getBitExpr(index_expr, input_bit_offsets);
+    std::vector<ref<BitExpr>> result;
+    for (auto o : bit_offsets) {
+      result.push_back(LookupBitExpr::create(read_root, input_bits, o));
+    }
+    return result;
   }
   case Expr::Concat: {
     auto concat_expr = cast<ConcatExpr>(expr);
@@ -140,7 +170,7 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
     bool has_msb = false;
     for (auto o : bit_offsets) {
       if (o >= src_width - 1) {
-        if (is_signed_ext) {
+        if (o == src_width - 1 || is_signed_ext) {
           has_msb = true;
         }
       } else {
@@ -155,7 +185,7 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
     auto src_result_index = 0u;
     for (auto o : bit_offsets) {
       if (o >= src_width - 1) {
-        if (is_signed_ext) {
+        if (o == src_width - 1 || is_signed_ext) {
           result.push_back(src_result.back());
         } else {
           result.push_back(ConstantBitExpr::create(false));
@@ -234,13 +264,18 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
         break;
       }
       case Expr::Xor: {
-        if (auto constant_left = dyn_cast<ConstantBitExpr>(left_bit)) {
+        auto constant_left = dyn_cast<ConstantBitExpr>(left_bit);
+        auto constant_right = dyn_cast<ConstantBitExpr>(right_bit);
+        if (constant_left && constant_right) {
+          result.push_back(ConstantBitExpr::create(constant_left->getValue() ^
+                                                   constant_right->getValue()));
+        } else if (constant_left) {
           if (constant_left->getValue()) {
             result.push_back(NotBitExpr::create(right_bit));
           } else {
             result.push_back(right_bit);
           }
-        } else if (auto constant_right = dyn_cast<ConstantBitExpr>(right_bit)) {
+        } else if (constant_right) {
           if (constant_right->getValue()) {
             result.push_back(NotBitExpr::create(left_bit));
           } else {
@@ -299,7 +334,7 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
     bool has_msb = false;
     for (auto o : bit_offsets) {
       if (o + shift_value >= src_width - 1) {
-        if (is_arithmetic_shift) {
+        if (o + shift_value == src_width - 1 || is_arithmetic_shift) {
           has_msb = true;
         }
       } else {
@@ -312,9 +347,9 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
     auto src_result = getBitExpr(src_expr, src_bit_offsets);
     std::vector<ref<BitExpr>> result;
     auto src_result_index = 0u;
-    for (auto i = 0u; i < bit_offsets.size(); i++) {
-      if (bit_offsets.at(i) + shift_value >= src_width - 1) {
-        if (is_arithmetic_shift) {
+    for (auto o : bit_offsets) {
+      if (o + shift_value >= src_width - 1) {
+        if (o + shift_value == src_width - 1 || is_arithmetic_shift) {
           result.push_back(src_result.back());
         } else {
           result.push_back(ConstantBitExpr::create(false));
@@ -352,13 +387,13 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
 
 class BoncControllerImpl {
 public:
-  const ExecutionState *current_state;
-  const llvm::Function *current_round_fn;
-  const llvm::BasicBlock *current_round_bb;
-  std::set<uint64_t> written_objects_in_round;
+  const ExecutionState *current_state{};
+  const llvm::Function *current_round_fn{};
+  const llvm::BasicBlock *current_round_bb{};
+  std::set<uint64_t> written_objects_in_round{};
+  unsigned round_index{0};
 
-  BoncControllerImpl()
-      : current_state{}, current_round_fn{}, current_round_bb{} {}
+  BoncControllerImpl() = default;
 
   void beforeEnterRoundFn(const Executor *executor, const ExecutionState &state,
                           const llvm::Function *f) {
@@ -440,6 +475,7 @@ public:
   }
 
   void trackRoundUpdate(Executor *executor, ExecutionState &state) {
+    std::size_t object_index = 0u;
     for (const auto addr : written_objects_in_round) {
       ObjectPair op;
       auto ret = state.addressSpace.resolveOne(
@@ -461,19 +497,26 @@ public:
         if (!isa<ConstantExpr>(expr)) {
           is_constant = false;
         }
-        auto bitExprs = getBitExpr(expr, {0, 1, 2, 3, 4, 5, 6, 7});
-        for (auto bitExpr : bitExprs) {
-          bitExpr->print(llvm::errs());
+        std::vector<unsigned> bit_offsets(CHAR_BIT);
+        std::iota(bit_offsets.begin(), bit_offsets.end(), 0);
+        auto bit_exprs = getBitExpr(expr, bit_offsets);
+        for (auto i = 0u; i < bit_exprs.size(); i++) {
+          llvm::errs() << "state_" << round_index << "_" << object_index << "["
+                       << offset * CHAR_BIT + i << "] := ";
+          bit_exprs.at(i)->print(llvm::errs());
           llvm::errs() << "\n";
         }
       }
 
       // Make it symbolic if not constant
       if (!is_constant) {
-        executor->executeMakeSymbolic(state, op.first,
-                                      "bonc_added_after_round");
+        auto symbol_name = "bonc::state/" + std::to_string(round_index) + "/" +
+                           std::to_string(object_index);
+        executor->executeMakeSymbolic(state, op.first, symbol_name);
+        object_index++;
       }
     }
+    round_index++;
   }
 };
 

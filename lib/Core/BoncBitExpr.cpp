@@ -1,5 +1,7 @@
 #include "BoncBitExpr.h"
 
+#include "klee/Expr/Expr.h"
+
 namespace klee::bonc {
 
 void ReadBitExpr::print(llvm::raw_ostream &os) const {
@@ -8,7 +10,8 @@ void ReadBitExpr::print(llvm::raw_ostream &os) const {
     os << "invalid";
     break;
   case ReadTarget::State:
-    os << "state_" << target.getStateRoundIndex() << "[" << offset << "]";
+    os << "state_" << target.getStateRoundIndex() << "_"
+       << target.getStateBlockIndex() << "[" << offset << "]";
     break;
   case ReadTarget::Key:
     os << "key[" << offset << "]";
@@ -29,6 +32,17 @@ void ReadBitExpr::print(llvm::raw_ostream &os) const {
     os << "keystream[" << offset << "]";
     break;
   }
+}
+
+void LookupBitExpr::print(llvm::raw_ostream &os) const {
+  os << table->getName() << "(";
+  for (auto i = 0u; i < inputs.size(); i++) {
+    if (i > 0) {
+      os << ", ";
+    }
+    inputs[i]->print(os);
+  }
+  os << ")[" << output_offset << "]";
 }
 
 void NotBitExpr::print(llvm::raw_ostream &os) const {

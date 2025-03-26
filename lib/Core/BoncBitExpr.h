@@ -3,13 +3,18 @@
 #include "klee/ADT/Ref.h"
 #include "llvm/Support/raw_ostream.h"
 
-namespace klee::bonc {
+namespace klee {
+
+class Array;
+
+namespace bonc {
 
 class BitExpr {
 public:
   enum Kind {
     Constant = 0,
     Read,
+    Lookup,
     Not,
     And,
     Or,
@@ -66,12 +71,13 @@ public:
 private:
   const Kind kind;
   const unsigned stateRoundIndex;
-  ReadTarget(Kind kind, unsigned stateRoundIndex = 0)
-      : kind{kind}, stateRoundIndex{stateRoundIndex} {}
+  const unsigned stateBlockIndex;
+  ReadTarget(Kind kind, unsigned stateRoundIndex = 0, unsigned stateBlockIndex = 0)
+      : kind{kind}, stateRoundIndex{stateRoundIndex}, stateBlockIndex{0} {}
 
 public:
-  static ReadTarget createState(unsigned stateRoundIndex) {
-    return ReadTarget(State, stateRoundIndex);
+  static ReadTarget createState(unsigned stateRoundIndex, unsigned stateBlockIndex) {
+    return ReadTarget(State, stateRoundIndex, stateBlockIndex);
   }
   static ReadTarget create(Kind kind) {
     assert(kind != State && "Use createState for state reads");
@@ -82,6 +88,10 @@ public:
   unsigned getStateRoundIndex() const {
     // assert(kind == State && "Only state reads have a round index");
     return stateRoundIndex;
+  }
+  unsigned getStateBlockIndex() const {
+    // assert(kind == State && "Only state reads have a block index");
+    return stateBlockIndex;
   }
 };
 
@@ -108,6 +118,37 @@ public:
 
   static bool classof(const BitExpr *e) { return e->getKind() == kind; }
   static bool classof(const ReadBitExpr *) { return true; }
+};
+
+class LookupBitExpr : public BitExpr {
+public:
+  static const Kind kind = Lookup;
+
+private:
+  const klee::Array *table;
+  std::vector<ref<BitExpr>> inputs;
+  unsigned output_offset;
+
+  LookupBitExpr(const klee::Array *table, std::vector<ref<BitExpr>> inputs,
+                unsigned output_offset)
+      : table{table}, inputs{inputs}, output_offset{output_offset} {}
+
+public:
+  static ref<LookupBitExpr> create(const klee::Array *table,
+                                   std::vector<ref<BitExpr>> inputs,
+                                   unsigned output_offset) {
+    return ref<LookupBitExpr>(new LookupBitExpr(table, inputs, output_offset));
+  }
+
+  const klee::Array *getTable() const { return table; }
+  const std::vector<ref<BitExpr>> &getInputs() const { return inputs; }
+  unsigned getOutputOffset() const { return output_offset; }
+
+  Kind getKind() const override { return kind; }
+  void print(llvm::raw_ostream &os) const override;
+
+  static bool classof(const BitExpr *e) { return e->getKind() == kind; }
+  static bool classof(const LookupBitExpr *) { return true; }
 };
 
 class NotBitExpr : public BitExpr {
@@ -160,4 +201,6 @@ public:
   static bool classof(const BinaryBitExpr *) { return true; }
 };
 
-} // namespace klee::bonc
+} // namespace bonc
+
+} // namespace klee
