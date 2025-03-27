@@ -72,30 +72,21 @@ std::vector<ref<BitExpr>> getBitExpr(ref<Expr> expr,
             read_root->name.c_str());
         abort();
       }
-      auto targetKind = ReadTarget::Invalid;
-      unsigned target_round_index = 0, target_block_index = 0;
-      if (auto index = read_root->name.find("bonc::state/");
-          index != std::string::npos) {
-        targetKind = ReadTarget::State;
-        auto index_str = read_root->name.substr(index + 12);
-        std::size_t block_id_idx = 0u;
-        target_round_index = std::stoi(index_str, &block_id_idx);
-        block_id_idx++;
-        target_block_index = std::stoi(index_str.substr(block_id_idx));
-      } else if (read_root->name.find("key") != std::string::npos) {
-        targetKind = ReadTarget::Key;
-      } else if (read_root->name.find("plaintext") != std::string::npos) {
-        targetKind = ReadTarget::Plaintext;
-      } else if (read_root->name.find("iv") != std::string::npos) {
-        targetKind = ReadTarget::IV;
-      } else if (read_root->name.find("nonce") != std::string::npos) {
-        targetKind = ReadTarget::Nonce;
+      auto target_kind = ReadTarget::Invalid;
+      std::string target_name;
+      if (read_root->name.find("bonc:state") == 0) {
+        target_kind = ReadTarget::State;
+        target_name = read_root->name.substr(5);
+      } else if (read_root->name.find("bonc:input") == 0) {
+        target_kind = ReadTarget::Input;
+        target_name = read_root->name.substr(5);
+      } else {
+        LOG("Read expression with unknown array root (%s)",
+            read_root->name.c_str());
+        abort();
       }
 
-      auto target =
-          targetKind == ReadTarget::State
-              ? ReadTarget::createState(target_round_index, target_block_index)
-              : ReadTarget::create(targetKind);
+      auto target = ReadTarget::create(target_kind, target_name);
 
       std::vector<ref<BitExpr>> result;
       for (auto o : bit_offsets) {
@@ -510,7 +501,7 @@ public:
 
       // Make it symbolic if not constant
       if (!is_constant) {
-        auto symbol_name = "bonc::state/" + std::to_string(round_index) + "/" +
+        auto symbol_name = "bonc:state/" + std::to_string(round_index) + "/" +
                            std::to_string(object_index);
         executor->executeMakeSymbolic(state, op.first, symbol_name);
         object_index++;

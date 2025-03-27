@@ -2,6 +2,7 @@
 
 #include "klee/ADT/Ref.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/JSON.h"
 
 namespace klee {
 
@@ -27,6 +28,11 @@ public:
 
   virtual Kind getKind() const = 0;
   virtual void print(llvm::raw_ostream &os) const = 0;
+  virtual llvm::json::Value toJSON() const = 0;
+
+  friend llvm::json::Value toJSON(const BitExpr& e) {
+    return e.toJSON();
+  }
 
   static bool classof(const BitExpr *) { return true; }
 };
@@ -48,6 +54,7 @@ public:
   void print(llvm::raw_ostream &os) const override {
     os << (value ? "1" : "0");
   }
+  llvm::json::Value toJSON() const override;
 
   bool getValue() const { return value; }
 
@@ -60,39 +67,22 @@ public:
   enum Kind {
     Invalid = -1,
     State = 0,
-    Key,
-    IV,
-    Nonce,
-    Plaintext,
-    Ciphertext,
-    Keystream,
+    Input,
   };
 
 private:
   const Kind kind;
-  const unsigned stateRoundIndex;
-  const unsigned stateBlockIndex;
-  ReadTarget(Kind kind, unsigned stateRoundIndex = 0, unsigned stateBlockIndex = 0)
-      : kind{kind}, stateRoundIndex{stateRoundIndex}, stateBlockIndex{0} {}
+  std::string name;
+  ReadTarget(Kind kind, std::string name)
+      : kind{kind}, name{std::move(name)} {}
 
 public:
-  static ReadTarget createState(unsigned stateRoundIndex, unsigned stateBlockIndex) {
-    return ReadTarget(State, stateRoundIndex, stateBlockIndex);
-  }
-  static ReadTarget create(Kind kind) {
-    assert(kind != State && "Use createState for state reads");
-    return ReadTarget(kind);
+  static ReadTarget create(Kind kind, std::string name) {
+    return ReadTarget(kind, name);
   }
 
   Kind getKind() const { return kind; }
-  unsigned getStateRoundIndex() const {
-    // assert(kind == State && "Only state reads have a round index");
-    return stateRoundIndex;
-  }
-  unsigned getStateBlockIndex() const {
-    // assert(kind == State && "Only state reads have a block index");
-    return stateBlockIndex;
-  }
+  const std::string &getName() const { return name; }
 };
 
 class ReadBitExpr : public BitExpr {
@@ -115,6 +105,7 @@ public:
 
   Kind getKind() const override { return kind; }
   void print(llvm::raw_ostream &os) const override;
+  llvm::json::Value toJSON() const override;
 
   static bool classof(const BitExpr *e) { return e->getKind() == kind; }
   static bool classof(const ReadBitExpr *) { return true; }
@@ -146,6 +137,7 @@ public:
 
   Kind getKind() const override { return kind; }
   void print(llvm::raw_ostream &os) const override;
+  llvm::json::Value toJSON() const override;
 
   static bool classof(const BitExpr *e) { return e->getKind() == kind; }
   static bool classof(const LookupBitExpr *) { return true; }
@@ -166,6 +158,7 @@ public:
 
   Kind getKind() const override { return kind; }
   void print(llvm::raw_ostream &os) const override;
+  llvm::json::Value toJSON() const override;
 
   ref<BitExpr> getExpr() const { return expr; }
 
@@ -191,6 +184,7 @@ public:
 
   Kind getKind() const override { return kind; }
   void print(llvm::raw_ostream &os) const override;
+  llvm::json::Value toJSON() const override;
 
   ref<BitExpr> getLeft() const { return left; }
   ref<BitExpr> getRight() const { return right; }
