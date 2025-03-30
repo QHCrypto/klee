@@ -38,6 +38,9 @@ public:
 
   void afterExitRoundLoop(Executor *executor, ExecutionState &state,
                           const llvm::BasicBlock *bb);
+
+  void setInput(const std::string& name, std::size_t size);
+  void setOutput(const std::string& name, std::size_t size);
 };
 
 } // namespace klee::bonc
