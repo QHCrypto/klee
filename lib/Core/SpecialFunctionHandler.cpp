@@ -124,6 +124,18 @@ static constexpr std::array handlerInfo = {
   add("memalign", handleMemalign, true),
   add("realloc", handleRealloc, true),
 
+  add("bonc_input", handleBoncInput, true),
+  add("bonc_input_plaintext", handleBoncInputPlaintext, true),
+  add("bonc_input_message", handleBoncInputMessage, true),
+  add("bonc_input_key", handleBoncInputKey, true),
+  add("bonc_input_iv", handleBoncInputIv, true),
+  add("bonc_input_nonce", handleBoncInputNonce, true),
+  add("bonc_round_number", handleBoncRoundNumber, true),
+  add("bonc_output", handleBoncOutput, false),
+  add("bonc_output_ciphertext", handleBoncOutputCiphertext, false),
+  add("bonc_output_keystream", handleBoncOutputKeystream, false),
+  add("bonc_output_tag", handleBoncOutputTag, false),
+
 #ifdef SUPPORT_KLEE_EH_CXX
   add("_klee_eh_Unwind_RaiseException_impl", handleEhUnwindRaiseExceptionImpl, false),
   add("klee_eh_typeid_for", handleEhTypeid, true),
@@ -840,4 +852,70 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
     assert(!mo->isLocal);
     mo->isGlobal = true;
   }
+}
+
+void SpecialFunctionHandler::handleBoncInput(ExecutionState &state,
+                                             KInstruction *target,
+                                             std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncInputPlaintext(ExecutionState &state,
+                                                      KInstruction *target,
+                                                      std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncInputMessage(ExecutionState &state,
+                                                    KInstruction *target,
+                                                    std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncInputKey(ExecutionState &state,
+                                                KInstruction *target,
+                                                std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncInputIv(ExecutionState &state,
+                                               KInstruction *target,
+                                               std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncInputNonce(ExecutionState &state,
+                                                  KInstruction *target,
+                                                  std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncRoundNumber(ExecutionState &state,
+                                                   KInstruction *target,
+                                                   std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncOutput(ExecutionState &state,
+                                              KInstruction *target,
+                                              std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncOutputCiphertext(ExecutionState &state,
+                                                        KInstruction *target,
+                                                        std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncOutputKeystream(ExecutionState &state,
+                                                       KInstruction *target,
+                                                       std::vector<ref<Expr>> &arguments) {
+  // TODO
+}
+
+void SpecialFunctionHandler::handleBoncOutputTag(ExecutionState &state,
+                                                 KInstruction *target,
+                                                 std::vector<ref<Expr>> &arguments) {
+  // TODO
 }

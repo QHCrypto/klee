@@ -729,6 +729,7 @@ endif()
 # Miscellaneous install
 ################################################################################
 install(FILES include/klee/klee.h DESTINATION include/klee)
+install(FILES include/bonc/bonc.h DESTINATION include/bonc)
 
 ################################################################################
 # Uninstall rule

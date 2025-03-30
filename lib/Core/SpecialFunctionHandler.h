@@ -119,6 +119,18 @@ namespace klee {
     HANDLER(handleUnderConstrained);
     HANDLER(handleWarning);
     HANDLER(handleWarningOnce);
+
+    HANDLER(handleBoncInput);
+    HANDLER(handleBoncInputPlaintext);
+    HANDLER(handleBoncInputMessage);
+    HANDLER(handleBoncInputKey);
+    HANDLER(handleBoncInputIv);
+    HANDLER(handleBoncInputNonce);
+    HANDLER(handleBoncRoundNumber);
+    HANDLER(handleBoncOutput);
+    HANDLER(handleBoncOutputCiphertext);
+    HANDLER(handleBoncOutputKeystream);
+    HANDLER(handleBoncOutputTag);
 #undef HANDLER
   };
 } // End klee namespace
