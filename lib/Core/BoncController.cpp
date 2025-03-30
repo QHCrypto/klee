@@ -480,6 +480,8 @@ public:
       LOG("Size: %u", op.second->size);
 
       bool is_constant = true;
+      auto symbol_name = "bonc:state/" + std::to_string(round_index) + "/" +
+                         std::to_string(object_index);
 
       for (auto offset = 0u; offset < op.second->size; offset++) {
         LOG("Byte at offset %u:", offset);
@@ -492,8 +494,7 @@ public:
         std::iota(bit_offsets.begin(), bit_offsets.end(), 0);
         auto bit_exprs = getBitExpr(expr, bit_offsets);
         for (auto i = 0u; i < bit_exprs.size(); i++) {
-          llvm::errs() << "state_" << round_index << "_" << object_index << "["
-                       << offset * CHAR_BIT + i << "] := ";
+          llvm::errs() << symbol_name << "[" << offset * CHAR_BIT + i << "] = ";
           bit_exprs.at(i)->print(llvm::errs());
           llvm::errs() << "\n";
         }
@@ -501,8 +502,6 @@ public:
 
       // Make it symbolic if not constant
       if (!is_constant) {
-        auto symbol_name = "bonc:state/" + std::to_string(round_index) + "/" +
-                           std::to_string(object_index);
         executor->executeMakeSymbolic(state, op.first, symbol_name);
         object_index++;
       }

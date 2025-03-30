@@ -9,7 +9,7 @@ llvm::json::Value ConstantBitExpr::toJSON() const {
 }
 
 void ReadBitExpr::print(llvm::raw_ostream &os) const {
-  os << "state_" << target.getName() << "[" << offset << "]";
+  os << target.getName() << "[" << offset << "]";
 }
 
 llvm::json::Value ReadBitExpr::toJSON() const {
