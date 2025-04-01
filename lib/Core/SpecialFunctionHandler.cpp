@@ -868,105 +868,60 @@ void SpecialFunctionHandler::handleBoncInput(ExecutionState &state,
     name = "unnamed";
     klee_warning("bonc_input: renamed empty name to \"unnamed\"");
   }
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  handleBoncInputCommon(state, target, arguments[0], name);
+}
+
+void SpecialFunctionHandler::handleBoncInputCommon(ExecutionState &state,
+                                                   KInstruction *target,
+                                                   ref<Expr> sizeExpr,
+                                                   const std::string &inputName) {
+  auto size = dyn_cast<ConstantExpr>(sizeExpr);
   if (!size) {
     executor.terminateStateOnUserError(state, "bonc_input requires constant size");
     return;
   }
-  executor.bonc.setInput(name, size->getZExtValue());
-  name = "bonc:input:" + name;
 
   std::vector<ref<Expr>> mallocArgs{size};
   handleMalloc(state, target, mallocArgs);
   auto retVal = executor.getDestCell(state, target).value;
 
-  handleMakeSymbolicImpl(state, retVal, size, name);
+  executor.bonc.setInput(inputName, size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:" + inputName);
 }
-
-// TODO: too many similar functions
 
 void SpecialFunctionHandler::handleBoncInputPlaintext(ExecutionState &state,
                                                       KInstruction *target,
                                                       std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_plaintext");
-  
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
-  if (!size) {
-    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
-    return;
-  }
-  std::vector<ref<Expr>> mallocArgs{size};
-  handleMalloc(state, target, mallocArgs);
-  auto retVal = executor.getDestCell(state, target).value;
-
-  executor.bonc.setInput("plaintext", size->getZExtValue());
-  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:plaintext");
+  handleBoncInputCommon(state, target, arguments[0], "plaintext");
 }
 
 void SpecialFunctionHandler::handleBoncInputMessage(ExecutionState &state,
                                                     KInstruction *target,
                                                     std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_message");
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
-  if (!size) {
-    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
-    return;
-  }
-  std::vector<ref<Expr>> mallocArgs{size};
-  handleMalloc(state, target, mallocArgs);
-  auto retVal = executor.getDestCell(state, target).value;
-
-  executor.bonc.setInput("message", size->getZExtValue());
-  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:message");
+  handleBoncInputCommon(state, target, arguments[0], "message");
 }
 
 void SpecialFunctionHandler::handleBoncInputKey(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_key");
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
-  if (!size) {
-    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
-    return;
-  }
-  std::vector<ref<Expr>> mallocArgs{size};
-  handleMalloc(state, target, mallocArgs);
-  auto retVal = executor.getDestCell(state, target).value;
-
-  executor.bonc.setInput("key", size->getZExtValue());
-  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:key");
+  handleBoncInputCommon(state, target, arguments[0], "key");
 }
 
 void SpecialFunctionHandler::handleBoncInputIv(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_iv");
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
-  if (!size) {
-    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
-    return;
-  }
-  std::vector<ref<Expr>> mallocArgs{size};
-  handleMalloc(state, target, mallocArgs);
-  auto retVal = executor.getDestCell(state, target).value;
-  executor.bonc.setInput("iv", size->getZExtValue());
-  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:iv");
+  handleBoncInputCommon(state, target, arguments[0], "iv");
 }
 
 void SpecialFunctionHandler::handleBoncInputNonce(ExecutionState &state,
                                                   KInstruction *target,
                                                   std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_nonce");
-  auto size = dyn_cast<ConstantExpr>(arguments[0]);
-  if (!size) {
-    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
-    return;
-  }
-  std::vector<ref<Expr>> mallocArgs{size};
-  handleMalloc(state, target, mallocArgs);
-  auto retVal = executor.getDestCell(state, target).value;
-  executor.bonc.setInput("nonce", size->getZExtValue());
-  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:nonce");
+  handleBoncInputCommon(state, target, arguments[0], "nonce");
 }
 
 void SpecialFunctionHandler::handleBoncMetaparamRoundNumber(ExecutionState &state,
