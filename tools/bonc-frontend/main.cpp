@@ -187,12 +187,8 @@ private:
   unsigned m_pathsCompleted;    // number of completed paths
   unsigned m_pathsExplored; // number of partially explored and completed paths
 
-  // used for writing .ktest files
-  int m_argc;
-  char **m_argv;
-
 public:
-  KleeHandler(int argc, char **argv);
+  KleeHandler();
   ~KleeHandler();
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
@@ -215,10 +211,10 @@ public:
   static std::string getRunTimeLibraryPath(const char *argv0);
 };
 
-KleeHandler::KleeHandler(int argc, char **argv)
+KleeHandler::KleeHandler()
     : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
       m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
-      m_pathsCompleted(0), m_pathsExplored(0), m_argc(argc), m_argv(argv) {
+      m_pathsCompleted(0), m_pathsExplored(0) {
 
   // create output directory (OutputDir or "klee-out-<i>")
   bool dir_given = OutputDir != "";
@@ -252,20 +248,20 @@ KleeHandler::KleeHandler(int argc, char **argv)
       if (mkdir(d.c_str(), 0775) == 0) {
         m_outputDirectory = d;
 
-        SmallString<128> klee_last(directory);
-        llvm::sys::path::append(klee_last, "klee-last");
+        // SmallString<128> klee_last(directory);
+        // llvm::sys::path::append(klee_last, "klee-last");
 
-        if ((unlink(klee_last.c_str()) < 0) && (errno != ENOENT)) {
-          klee_warning("cannot remove existing klee-last symlink: %s",
-                       strerror(errno));
-        }
+        // if ((unlink(klee_last.c_str()) < 0) && (errno != ENOENT)) {
+        //   klee_warning("cannot remove existing klee-last symlink: %s",
+        //                strerror(errno));
+        // }
 
-        size_t offset = m_outputDirectory.size() -
-                        llvm::sys::path::filename(m_outputDirectory).size();
-        if (symlink(m_outputDirectory.c_str() + offset, klee_last.c_str()) <
-            0) {
-          klee_warning("cannot create klee-last symlink: %s", strerror(errno));
-        }
+        // size_t offset = m_outputDirectory.size() -
+        //                 llvm::sys::path::filename(m_outputDirectory).size();
+        // if (symlink(m_outputDirectory.c_str() + offset, klee_last.c_str()) <
+        //     0) {
+        //   klee_warning("cannot create klee-last symlink: %s", strerror(errno));
+        // }
 
         break;
       }
@@ -491,6 +487,19 @@ static const char *modelledExternals[] = {
     "llvm.va_end",
     "malloc",
     "realloc",
+    "bonc_input",
+    "bonc_input_plaintext",
+    "bonc_input_message",
+    "bonc_input_key",
+    "bonc_input_iv",
+    "bonc_input_nonce",
+    "bonc_metaparam_round_number",
+    "bonc_output",
+    "bonc_output_ciphertext",
+    "bonc_output_keystream",
+    "bonc_output_tag",
+    "llvm.bonc.round.enter",
+    "llvm.bonc.round.exit",
     "memalign",
     "_ZdaPv",
     "_ZdlPv",
@@ -653,15 +662,10 @@ static Interpreter *theInterpreter = 0;
 
 static bool interrupted = false;
 
-// Pulled out so it can be easily called from a debugger.
-extern "C" void halt_execution() { theInterpreter->setHaltExecution(true); }
-
-extern "C" void stop_forking() { theInterpreter->setInhibitForking(true); }
-
 static void interrupt_handle() {
   if (!interrupted && theInterpreter) {
     llvm::errs() << "KLEE: ctrl-c detected, requesting interpreter to halt.\n";
-    halt_execution();
+    theInterpreter->setHaltExecution(true);
     sys::SetInterruptFunction(interrupt_handle);
   } else {
     llvm::errs() << "KLEE: ctrl-c detected, exiting.\n";
@@ -962,10 +966,11 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = 0;
-  KleeHandler *handler = new KleeHandler(pArgc, pArgv);
+  KleeHandler *handler = new KleeHandler();
   Interpreter *interpreter = theInterpreter =
       Interpreter::create(ctx, IOpts, handler);
   assert(interpreter);
+  interpreter->setInhibitForking(true);
   handler->setInterpreter(interpreter);
 
   for (int i = 0; i < argc; i++)
@@ -982,9 +987,18 @@ int main(int argc, char **argv, char **envp) {
 
   externalsAndGlobalsCheck(finalModule);
 
-  {
+  interpreter->runFunctionAsMain(entryFn, pArgc, pArgv, pEnvp);
 
-    interpreter->runFunctionAsMain(entryFn, pArgc, pArgv, pEnvp);
+  {
+    std::string error;
+    auto out_path = handler->getOutputFilename("bonc.json");
+    auto f = klee_open_output_file(out_path, error);
+    if (!f) {
+      klee_warning("error opening file \"%s\" (%s).", out_path.c_str(),
+                   error.c_str());
+      return 1;
+    }
+    interpreter->printBoncResult(*f);
   }
 
   // Free all the args.
@@ -992,60 +1006,6 @@ int main(int argc, char **argv, char **envp) {
   delete[] pArgv;
 
   delete interpreter;
-
-  uint64_t queries = *theStatisticManager->getStatisticByName("SolverQueries");
-  uint64_t queriesValid =
-      *theStatisticManager->getStatisticByName("QueriesValid");
-  uint64_t queriesInvalid =
-      *theStatisticManager->getStatisticByName("QueriesInvalid");
-  uint64_t queryCounterexamples =
-      *theStatisticManager->getStatisticByName("QueriesCEX");
-  uint64_t queryConstructs =
-      *theStatisticManager->getStatisticByName("QueryConstructs");
-  uint64_t instructions =
-      *theStatisticManager->getStatisticByName("Instructions");
-  uint64_t forks = *theStatisticManager->getStatisticByName("Forks");
-
-  handler->getInfoStream() << "KLEE: done: explored paths = " << 1 + forks
-                           << "\n";
-
-  // Write some extra information in the info file which users won't
-  // necessarily care about or understand.
-  if (queries)
-    handler->getInfoStream() << "KLEE: done: avg. constructs per query = "
-                             << queryConstructs / queries << "\n";
-  handler->getInfoStream() << "KLEE: done: total queries = " << queries << "\n"
-                           << "KLEE: done: valid queries = " << queriesValid
-                           << "\n"
-                           << "KLEE: done: invalid queries = " << queriesInvalid
-                           << "\n"
-                           << "KLEE: done: query cex = " << queryCounterexamples
-                           << "\n";
-
-  std::stringstream stats;
-  stats << '\n'
-        << "KLEE: done: total instructions = " << instructions << '\n'
-        << "KLEE: done: completed paths = " << handler->getNumPathsCompleted()
-        << '\n'
-        << "KLEE: done: partially completed paths = "
-        << handler->getNumPathsExplored() - handler->getNumPathsCompleted()
-        << '\n'
-        << "KLEE: done: generated tests = " << handler->getNumTestCases()
-        << '\n';
-
-  bool useColors = llvm::errs().is_displayed();
-  if (useColors)
-    llvm::errs().changeColor(llvm::raw_ostream::GREEN,
-                             /*bold=*/true,
-                             /*bg=*/false);
-
-  llvm::errs() << stats.str();
-
-  if (useColors)
-    llvm::errs().resetColor();
-
-  handler->getInfoStream() << stats.str();
-
   delete handler;
 
   return 0;

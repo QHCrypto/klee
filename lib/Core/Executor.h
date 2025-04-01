@@ -550,6 +550,10 @@ public:
   void runFunctionAsMain(llvm::Function *f, int argc, char **argv,
                          char **envp) override;
 
+  void printBoncResult(llvm::raw_ostream &os) override {
+    bonc.printResult(os);
+  }
+
   /*** Runtime options ***/
 
   void setHaltExecution(bool value) override { haltExecution = value; }

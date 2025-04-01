@@ -41,6 +41,8 @@ public:
 
   void setInput(const std::string& name, std::size_t size);
   void setOutput(const std::string& name, std::size_t size);
+
+  void printResult(llvm::raw_ostream &os) const;
 };
 
 } // namespace klee::bonc

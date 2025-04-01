@@ -5,7 +5,7 @@
 namespace klee::bonc {
 
 llvm::json::Value ConstantBitExpr::toJSON() const {
-  return llvm::json::Object{{"type", "constant"}, {"value", value}};
+  return llvm::json::Object{{"type", "constant"}, {"value", +value}};
 }
 
 void ReadBitExpr::print(llvm::raw_ostream &os) const {

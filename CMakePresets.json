@@ -24,7 +24,8 @@
     {
       "name": "bonc",
       "configurePreset": "bonc",
-      "jobs": 24
+      "jobs": 24,
+      "targets": ["bonc-frontend"]
     }
   ],
   "workflowPresets": [

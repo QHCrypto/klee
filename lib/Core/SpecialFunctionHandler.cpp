@@ -130,7 +130,7 @@ static constexpr std::array handlerInfo = {
   add("bonc_input_key", handleBoncInputKey, true),
   add("bonc_input_iv", handleBoncInputIv, true),
   add("bonc_input_nonce", handleBoncInputNonce, true),
-  add("bonc_round_number", handleBoncRoundNumber, true),
+  add("bonc_metaparam_round_number", handleBoncMetaparamRoundNumber, true),
   add("bonc_output", handleBoncOutput, false),
   add("bonc_output_ciphertext", handleBoncOutputCiphertext, false),
   add("bonc_output_keystream", handleBoncOutputKeystream, false),
@@ -890,9 +890,9 @@ void SpecialFunctionHandler::handleBoncInputNonce(ExecutionState &state,
   // TODO
 }
 
-void SpecialFunctionHandler::handleBoncRoundNumber(ExecutionState &state,
-                                                   KInstruction *target,
-                                                   std::vector<ref<Expr>> &arguments) {
+void SpecialFunctionHandler::handleBoncMetaparamRoundNumber(ExecutionState &state,
+                                                            KInstruction *target,
+                                                            std::vector<ref<Expr>> &arguments) {
   // TODO
 }
 

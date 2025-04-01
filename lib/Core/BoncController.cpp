@@ -7,6 +7,7 @@
 #include "klee/Expr/Expr.h"
 #include "llvm-13/llvm/IR/InstrTypes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/Support/JSON.h"
 #include <climits>
 #include <string>
 
@@ -29,11 +30,25 @@ struct IterationInfo {
   std::string name;
   std::size_t size;
   std::vector<ref<BitExpr>> update_expressions;
+
+  friend llvm::json::Value toJSON(const IterationInfo &info) {
+    llvm::json::Array update_json;
+    for (auto &update : info.update_expressions) {
+      update_json.push_back(update->toJSON());
+    }
+    return llvm::json::Object{{"name", info.name},
+                              {"size", info.size},
+                              {"update_expressions", std::move(update_json)}};
+  }
 };
 
 struct IoInfo {
   std::string name;
   std::size_t size;
+
+  friend llvm::json::Value toJSON(const IoInfo &info) {
+    return llvm::json::Object{{"name", info.name}, {"size", info.size}};
+  }
 };
 
 class BoncControllerImpl {
@@ -597,16 +612,37 @@ void BoncController::afterExitRoundLoop(Executor *executor,
 
 void BoncController::setInput(const std::string &name, std::size_t size) {
   auto it = pImpl->inputs.find(name);
-  assert(it == pImpl->inputs.end() &&
-         "Input name already exists in the map");
+  assert(it == pImpl->inputs.end() && "Input name already exists in the map");
   pImpl->inputs.insert({name, {name, size}});
 }
 
 void BoncController::setOutput(const std::string &name, std::size_t size) {
   auto it = pImpl->outputs.find(name);
-  assert(it == pImpl->outputs.end() &&
-         "Output name already exists in the map");
+  assert(it == pImpl->outputs.end() && "Output name already exists in the map");
   pImpl->outputs.insert({name, {name, size}});
+}
+
+void BoncController::printResult(llvm::raw_ostream &os) const {
+  llvm::json::Object result;
+  result.insert({"version", 0});
+  result.insert({"info", llvm::json::Object()});
+  result.insert({"meta_parameters", llvm::json::Array{}});
+  llvm::json::Array inputs, outputs, iterations;
+  for (const auto &[_, info] : pImpl->inputs) {
+    inputs.push_back(info);
+  }
+  for (const auto &[_, info] : pImpl->outputs) {
+    outputs.push_back(info);
+  }
+  for (const auto &item : pImpl->iterations) {
+    iterations.push_back(toJSON(item));
+  }
+  result.insert({"inputs", std::move(inputs)});
+  result.insert({"outputs", std::move(outputs)});
+  result.insert({"components", llvm::json::Object()});
+  result.insert({"iterations", std::move(iterations)});
+
+  os << llvm::json::Value(std::move(result));
 }
 
 } // namespace klee::bonc

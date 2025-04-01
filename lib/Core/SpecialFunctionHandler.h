@@ -126,7 +126,7 @@ namespace klee {
     HANDLER(handleBoncInputKey);
     HANDLER(handleBoncInputIv);
     HANDLER(handleBoncInputNonce);
-    HANDLER(handleBoncRoundNumber);
+    HANDLER(handleBoncMetaparamRoundNumber);
     HANDLER(handleBoncOutput);
     HANDLER(handleBoncOutputCiphertext);
     HANDLER(handleBoncOutputKeystream);
