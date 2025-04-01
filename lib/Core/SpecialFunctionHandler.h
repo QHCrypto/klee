@@ -47,6 +47,9 @@ namespace klee {
       bool doNotOverride; /// Intrinsic should not be used if already defined
     };
 
+  private:
+    void handleMakeSymbolicImpl(ExecutionState &state, ref<Expr> addr, ref<Expr> size, const std::string& name);
+
   public:
     SpecialFunctionHandler(Executor &_executor);
 

@@ -785,26 +785,9 @@ void SpecialFunctionHandler::handleDefineFixedObject(ExecutionState &state,
   mo->isUserSpecified = true; // XXX hack;
 }
 
-void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
-                                                KInstruction *target,
-                                                std::vector<ref<Expr> > &arguments) {
-  std::string name;
-
-  if (arguments.size() != 3) {
-    executor.terminateStateOnUserError(state,
-        "Incorrect number of arguments to klee_make_symbolic(void*, size_t, char*)");
-    return;
-  }
-
-  name = arguments[2]->isZero() ? "" : readStringAtAddress(state, arguments[2]);
-
-  if (name.length() == 0) {
-    name = "unnamed";
-    klee_warning("klee_make_symbolic: renamed empty name to \"unnamed\"");
-  }
-
+void SpecialFunctionHandler::handleMakeSymbolicImpl(ExecutionState &state, ref<Expr> addr, ref<Expr> size, const std::string& name) {
   Executor::ExactResolutionList rl;
-  executor.resolveExact(state, arguments[0], rl, "make_symbolic");
+  executor.resolveExact(state, addr, rl, "make_symbolic");
   
   for (Executor::ExactResolutionList::iterator it = rl.begin(), 
          ie = rl.end(); it != ie; ++it) {
@@ -824,7 +807,7 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
     bool success __attribute__((unused)) = executor.solver->mustBeTrue(
         s->constraints,
         EqExpr::create(
-            ZExtExpr::create(arguments[1], Context::get().getPointerWidth()),
+            ZExtExpr::create(size, Context::get().getPointerWidth()),
             mo->getSizeExpr()),
         res, s->queryMetaData);
     assert(success && "FIXME: Unhandled solver failure");
@@ -835,6 +818,27 @@ void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
       executor.terminateStateOnUserError(*s, "Wrong size given to klee_make_symbolic");
     }
   }
+
+}
+
+void SpecialFunctionHandler::handleMakeSymbolic(ExecutionState &state,
+                                                KInstruction *target,
+                                                std::vector<ref<Expr> > &arguments) {
+  std::string name;
+
+  if (arguments.size() != 3) {
+    executor.terminateStateOnUserError(state,
+        "Incorrect number of arguments to klee_make_symbolic(void*, size_t, char*)");
+    return;
+  }
+
+  name = arguments[2]->isZero() ? "" : readStringAtAddress(state, arguments[2]);
+
+  if (name.length() == 0) {
+    name = "unnamed";
+    klee_warning("klee_make_symbolic: renamed empty name to \"unnamed\"");
+  }
+  handleMakeSymbolicImpl(state, arguments[0], arguments[1], name);
 }
 
 void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
@@ -857,37 +861,112 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
 void SpecialFunctionHandler::handleBoncInput(ExecutionState &state,
                                              KInstruction *target,
                                              std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 2 &&
+         "invalid number of arguments to bonc_input");
+  std::string name = readStringAtAddress(state, arguments[1]);
+  if (name.length() == 0) {
+    name = "unnamed";
+    klee_warning("bonc_input: renamed empty name to \"unnamed\"");
+  }
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  executor.bonc.setInput(name, size->getZExtValue());
+  name = "bonc:input:" + name;
+
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+
+  handleMakeSymbolicImpl(state, retVal, size, name);
 }
+
+// TODO: too many similar functions
 
 void SpecialFunctionHandler::handleBoncInputPlaintext(ExecutionState &state,
                                                       KInstruction *target,
                                                       std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_plaintext");
+  
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+
+  executor.bonc.setInput("plaintext", size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:plaintext");
 }
 
 void SpecialFunctionHandler::handleBoncInputMessage(ExecutionState &state,
                                                     KInstruction *target,
                                                     std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_message");
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+
+  executor.bonc.setInput("message", size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:message");
 }
 
 void SpecialFunctionHandler::handleBoncInputKey(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_key");
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+
+  executor.bonc.setInput("key", size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:key");
 }
 
 void SpecialFunctionHandler::handleBoncInputIv(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_iv");
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+  executor.bonc.setInput("iv", size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:iv");
 }
 
 void SpecialFunctionHandler::handleBoncInputNonce(ExecutionState &state,
                                                   KInstruction *target,
                                                   std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_nonce");
+  auto size = dyn_cast<ConstantExpr>(arguments[0]);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_input requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> mallocArgs{size};
+  handleMalloc(state, target, mallocArgs);
+  auto retVal = executor.getDestCell(state, target).value;
+  executor.bonc.setInput("nonce", size->getZExtValue());
+  handleMakeSymbolicImpl(state, retVal, size, "bonc:input:nonce");
 }
 
 void SpecialFunctionHandler::handleBoncMetaparamRoundNumber(ExecutionState &state,

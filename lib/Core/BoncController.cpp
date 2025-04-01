@@ -531,7 +531,6 @@ public:
       std::vector<ref<BitExpr>> update_expressions;
 
       for (auto offset = 0u; offset < op.second->size; offset++) {
-        LOG("Byte at offset %u:", offset);
         auto expr = ConstraintManager::simplifyExpr(state.constraints,
                                                     op.second->read8(offset));
         if (!isa<ConstantExpr>(expr)) {
