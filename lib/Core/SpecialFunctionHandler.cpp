@@ -858,20 +858,7 @@ void SpecialFunctionHandler::handleMarkGlobal(ExecutionState &state,
   }
 }
 
-void SpecialFunctionHandler::handleBoncInput(ExecutionState &state,
-                                             KInstruction *target,
-                                             std::vector<ref<Expr>> &arguments) {
-  assert(arguments.size() == 2 &&
-         "invalid number of arguments to bonc_input");
-  std::string name = readStringAtAddress(state, arguments[1]);
-  if (name.length() == 0) {
-    name = "unnamed";
-    klee_warning("bonc_input: renamed empty name to \"unnamed\"");
-  }
-  handleBoncInputCommon(state, target, arguments[0], name);
-}
-
-void SpecialFunctionHandler::handleBoncInputCommon(ExecutionState &state,
+void SpecialFunctionHandler::handleBoncInputImpl(ExecutionState &state,
                                                    KInstruction *target,
                                                    ref<Expr> sizeExpr,
                                                    const std::string &inputName) {
@@ -889,39 +876,52 @@ void SpecialFunctionHandler::handleBoncInputCommon(ExecutionState &state,
   handleMakeSymbolicImpl(state, retVal, size, "bonc:input:" + inputName);
 }
 
+void SpecialFunctionHandler::handleBoncInput(ExecutionState &state,
+                                             KInstruction *target,
+                                             std::vector<ref<Expr>> &arguments) {
+  assert(arguments.size() == 2 &&
+         "invalid number of arguments to bonc_input");
+  std::string name = readStringAtAddress(state, arguments[1]);
+  if (name.length() == 0) {
+    name = "unnamed";
+    klee_warning("bonc_input: renamed empty name to \"unnamed\"");
+  }
+  handleBoncInputImpl(state, target, arguments[0], name);
+}
+
 void SpecialFunctionHandler::handleBoncInputPlaintext(ExecutionState &state,
                                                       KInstruction *target,
                                                       std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_plaintext");
-  handleBoncInputCommon(state, target, arguments[0], "plaintext");
+  handleBoncInputImpl(state, target, arguments[0], "plaintext");
 }
 
 void SpecialFunctionHandler::handleBoncInputMessage(ExecutionState &state,
                                                     KInstruction *target,
                                                     std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_message");
-  handleBoncInputCommon(state, target, arguments[0], "message");
+  handleBoncInputImpl(state, target, arguments[0], "message");
 }
 
 void SpecialFunctionHandler::handleBoncInputKey(ExecutionState &state,
                                                 KInstruction *target,
                                                 std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_key");
-  handleBoncInputCommon(state, target, arguments[0], "key");
+  handleBoncInputImpl(state, target, arguments[0], "key");
 }
 
 void SpecialFunctionHandler::handleBoncInputIv(ExecutionState &state,
                                                KInstruction *target,
                                                std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_iv");
-  handleBoncInputCommon(state, target, arguments[0], "iv");
+  handleBoncInputImpl(state, target, arguments[0], "iv");
 }
 
 void SpecialFunctionHandler::handleBoncInputNonce(ExecutionState &state,
                                                   KInstruction *target,
                                                   std::vector<ref<Expr>> &arguments) {
   assert(arguments.size() == 1 && "invalid number of arguments to bonc_input_nonce");
-  handleBoncInputCommon(state, target, arguments[0], "nonce");
+  handleBoncInputImpl(state, target, arguments[0], "nonce");
 }
 
 void SpecialFunctionHandler::handleBoncMetaparamRoundNumber(ExecutionState &state,
@@ -930,26 +930,60 @@ void SpecialFunctionHandler::handleBoncMetaparamRoundNumber(ExecutionState &stat
   // TODO
 }
 
+void SpecialFunctionHandler::handleBoncOutputImpl(ExecutionState &state,
+                                               ref<Expr> addr,
+                                               ref<Expr> sizeExpr,
+                                               const std::string &outputName) {
+  auto size = dyn_cast<ConstantExpr>(sizeExpr);
+  if (!size) {
+    executor.terminateStateOnUserError(state, "bonc_output requires constant size");
+    return;
+  }
+  std::vector<ref<Expr>> expressions_by_byte;
+
+  Executor::ExactResolutionList rl;
+  executor.resolveExact(state, addr, rl, "klee_get_obj_size");
+  for (auto &[moos, state] : rl) {
+    auto [mo, os] = moos;
+
+    for (auto offset = 0u; offset < os->size; offset++) {
+      auto expr = ConstraintManager::simplifyExpr(state->constraints, os->read8(offset));
+      expressions_by_byte.push_back(expr);
+    }
+
+  }
+  executor.bonc.setOutput(outputName, size->getZExtValue(), expressions_by_byte);
+}
+
 void SpecialFunctionHandler::handleBoncOutput(ExecutionState &state,
                                               KInstruction *target,
                                               std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 3 && "invalid number of arguments to bonc_output");
+  std::string name = readStringAtAddress(state, arguments[2]);
+  if (name.length() == 0) {
+    name = "unnamed";
+    klee_warning("bonc_output: renamed empty name to \"unnamed\"");
+  }
+  handleBoncOutputImpl(state, arguments[0], arguments[1], name);
 }
 
 void SpecialFunctionHandler::handleBoncOutputCiphertext(ExecutionState &state,
                                                         KInstruction *target,
                                                         std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 2 && "invalid number of arguments to bonc_output_ciphertext");
+  handleBoncOutputImpl(state, arguments[0], arguments[1], "ciphertext");
 }
 
 void SpecialFunctionHandler::handleBoncOutputKeystream(ExecutionState &state,
                                                        KInstruction *target,
                                                        std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 2 && "invalid number of arguments to bonc_output_keystream");
+  handleBoncOutputImpl(state, arguments[0], arguments[1], "keystream");
 }
 
 void SpecialFunctionHandler::handleBoncOutputTag(ExecutionState &state,
                                                  KInstruction *target,
                                                  std::vector<ref<Expr>> &arguments) {
-  // TODO
+  assert(arguments.size() == 2 && "invalid number of arguments to bonc_output_tag");
+  handleBoncOutputImpl(state, arguments[0], arguments[1], "tag");
 }

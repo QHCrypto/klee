@@ -49,8 +49,10 @@ namespace klee {
 
   private:
     void handleMakeSymbolicImpl(ExecutionState &state, ref<Expr> addr, ref<Expr> size, const std::string& name);
-    void handleBoncInputCommon(ExecutionState &state, KInstruction *target,
+    void handleBoncInputImpl(ExecutionState &state, KInstruction *target,
                                ref<Expr> sizeExpr, const std::string &inputName);
+    void handleBoncOutputImpl(ExecutionState &state, ref<Expr> addr,
+                                ref<Expr> sizeExpr, const std::string &outputName);
 
   public:
     SpecialFunctionHandler(Executor &_executor);

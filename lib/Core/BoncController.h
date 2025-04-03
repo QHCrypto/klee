@@ -40,7 +40,8 @@ public:
                           const llvm::BasicBlock *bb);
 
   void setInput(const std::string& name, std::size_t size);
-  void setOutput(const std::string& name, std::size_t size);
+  void setOutput(const std::string& name, std::size_t size, 
+                 const std::vector<ref<Expr>>& expressions_by_byte);
 
   void printResult(llvm::raw_ostream &os) const;
 };

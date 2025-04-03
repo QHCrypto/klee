@@ -8,6 +8,7 @@
 #include "llvm-13/llvm/IR/InstrTypes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/Support/JSON.h"
+#include <algorithm>
 #include <climits>
 #include <string>
 
@@ -24,6 +25,13 @@ struct SBoxTableInfo {
   std::size_t input_width;
   std::size_t output_width;
   std::vector<uint64_t> values;
+
+  friend llvm::json::Value toJSON(const SBoxTableInfo &info) {
+    return llvm::json::Object{{"name", info.name},
+                              {"input_width", info.input_width},
+                              {"output_width", info.output_width},
+                              {"values", std::move(info.values)}};
+  }
 };
 
 struct IterationInfo {
@@ -45,9 +53,18 @@ struct IterationInfo {
 struct IoInfo {
   std::string name;
   std::size_t size;
+  std::vector<ref<BitExpr>> expressions;
 
   friend llvm::json::Value toJSON(const IoInfo &info) {
-    return llvm::json::Object{{"name", info.name}, {"size", info.size}};
+    llvm::json::Object result{{"name", info.name}, {"size", info.size}};
+    if (info.expressions.size() > 0) {
+      llvm::json::Array expr_json;
+      for (auto &expr : info.expressions) {
+        expr_json.push_back(expr->toJSON());
+      }
+      result["expressions"] = std::move(expr_json);
+    }
+    return result;
   }
 };
 
@@ -526,7 +543,7 @@ public:
       LOG("Size: %u", op.second->size);
 
       bool is_constant = true;
-      auto symbol_name = "bonc:state/" + std::to_string(round_index) + "/" +
+      auto symbol_name = "bonc:state:" + std::to_string(round_index) + "/" +
                          std::to_string(object_index);
       std::vector<ref<BitExpr>> update_expressions;
 
@@ -612,13 +629,22 @@ void BoncController::afterExitRoundLoop(Executor *executor,
 void BoncController::setInput(const std::string &name, std::size_t size) {
   auto it = pImpl->inputs.find(name);
   assert(it == pImpl->inputs.end() && "Input name already exists in the map");
-  pImpl->inputs.insert({name, {name, size}});
+  pImpl->inputs.insert({name, {name, size, {}}});
 }
 
-void BoncController::setOutput(const std::string &name, std::size_t size) {
+void BoncController::setOutput(
+    const std::string &name, std::size_t size,
+    const std::vector<ref<Expr>> &expressions_by_byte) {
   auto it = pImpl->outputs.find(name);
   assert(it == pImpl->outputs.end() && "Output name already exists in the map");
-  pImpl->outputs.insert({name, {name, size}});
+  std::vector<ref<BitExpr>> bit_exprs;
+  for (auto &expr : expressions_by_byte) {
+    std::vector<unsigned> bit_offsets(CHAR_BIT);
+    std::iota(bit_offsets.begin(), bit_offsets.end(), 0);
+    auto exprs = pImpl->getBitExpr(expr, bit_offsets);
+    std::move(exprs.begin(), exprs.end(), std::back_inserter(bit_exprs));
+  }
+  pImpl->outputs.insert({name, {name, size, std::move(bit_exprs)}});
 }
 
 void BoncController::printResult(llvm::raw_ostream &os) const {
@@ -626,7 +652,7 @@ void BoncController::printResult(llvm::raw_ostream &os) const {
   result.insert({"version", 0});
   result.insert({"info", llvm::json::Object()});
   result.insert({"meta_parameters", llvm::json::Array{}});
-  llvm::json::Array inputs, outputs, iterations;
+  llvm::json::Array inputs, outputs, iterations, sboxes;
   for (const auto &[_, info] : pImpl->inputs) {
     inputs.push_back(info);
   }
@@ -636,9 +662,23 @@ void BoncController::printResult(llvm::raw_ostream &os) const {
   for (const auto &item : pImpl->iterations) {
     iterations.push_back(toJSON(item));
   }
+  for (const auto &item : pImpl->sbox_tables) {
+    auto &values = item->constantValues;
+    SBoxTableInfo info{};
+    info.name = item->name;
+    info.input_width = BIT_WIDTH(item->getSize() - 1);
+    info.values.reserve(values.size());
+    for (auto i = 0u; i < values.size(); i++) {
+      info.values.push_back(values.at(i)->getZExtValue());
+    }
+    info.output_width =
+        BIT_WIDTH(*std::max_element(info.values.begin(), info.values.end()));
+    sboxes.push_back(toJSON(info));
+  }
   result.insert({"inputs", std::move(inputs)});
   result.insert({"outputs", std::move(outputs)});
-  result.insert({"components", llvm::json::Object()});
+  result.insert(
+      {"components", llvm::json::Object{{"sboxes", std::move(sboxes)}}});
   result.insert({"iterations", std::move(iterations)});
 
   os << llvm::json::Value(std::move(result));
