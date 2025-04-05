@@ -75,10 +75,10 @@ cl::opt<std::string> InputFile(cl::desc("<input bytecode>"), cl::Positional,
 cl::OptionCategory StartCat("Startup options",
                             "These options affect how execution is started.");
 
-cl::opt<std::string>
-    EntryPoint("entry-point",
-               cl::desc("Function in which to start execution (default=main)"),
-               cl::init("main"), cl::cat(StartCat));
+cl::opt<std::string> EntryPoint(
+    "entry-point",
+    cl::desc("Function in which to start execution (default=bonc_main)"),
+    cl::init("bonc_main"), cl::cat(StartCat));
 
 cl::opt<std::string>
     RunInDir("run-in-dir",
@@ -177,32 +177,17 @@ class ExecutionState;
 class KleeHandler : public InterpreterHandler {
 private:
   Interpreter *m_interpreter;
-  TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
 
   SmallString<128> m_outputDirectory;
-
-  unsigned m_numTotalTests;     // Number of tests received from the interpreter
-  unsigned m_numGeneratedTests; // Number of tests successfully generated
-  unsigned m_pathsCompleted;    // number of completed paths
-  unsigned m_pathsExplored; // number of partially explored and completed paths
 
 public:
   KleeHandler();
   ~KleeHandler();
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
-  /// Returns the number of test cases successfully generated so far
-  unsigned getNumTestCases() { return m_numGeneratedTests; }
-  unsigned getNumPathsCompleted() { return m_pathsCompleted; }
-  unsigned getNumPathsExplored() { return m_pathsExplored; }
-  void incPathsCompleted() { ++m_pathsCompleted; }
-  void incPathsExplored(std::uint32_t num = 1) { m_pathsExplored += num; }
 
   void setInterpreter(Interpreter *i);
-
-  void processTestCase(const ExecutionState &state, const char *errorMessage,
-                       const char *errorSuffix);
 
   std::string getOutputFilename(const std::string &filename);
   std::unique_ptr<llvm::raw_fd_ostream>
@@ -211,10 +196,7 @@ public:
   static std::string getRunTimeLibraryPath(const char *argv0);
 };
 
-KleeHandler::KleeHandler()
-    : m_interpreter(0), m_pathWriter(0), m_symPathWriter(0),
-      m_outputDirectory(), m_numTotalTests(0), m_numGeneratedTests(0),
-      m_pathsCompleted(0), m_pathsExplored(0) {
+KleeHandler::KleeHandler() : m_interpreter(0), m_outputDirectory() {
 
   // create output directory (OutputDir or "klee-out-<i>")
   bool dir_given = OutputDir != "";
@@ -260,7 +242,8 @@ KleeHandler::KleeHandler()
         //                 llvm::sys::path::filename(m_outputDirectory).size();
         // if (symlink(m_outputDirectory.c_str() + offset, klee_last.c_str()) <
         //     0) {
-        //   klee_warning("cannot create klee-last symlink: %s", strerror(errno));
+        //   klee_warning("cannot create klee-last symlink: %s",
+        //   strerror(errno));
         // }
 
         break;
@@ -294,8 +277,6 @@ KleeHandler::KleeHandler()
 }
 
 KleeHandler::~KleeHandler() {
-  delete m_pathWriter;
-  delete m_symPathWriter;
   fclose(klee_warning_file);
   fclose(klee_message_file);
 }
@@ -321,18 +302,6 @@ KleeHandler::openOutputFile(const std::string &filename) {
     return nullptr;
   }
   return f;
-}
-
-/* Outputs all files (.ktest, .kquery, .cov etc.) describing a test case */
-void KleeHandler::processTestCase(const ExecutionState &state,
-                                  const char *errorMessage,
-                                  const char *errorSuffix) {
-  unsigned test_id = ++m_numTotalTests;
-
-  if (errorMessage && OptExitOnError) {
-    m_interpreter->prepareForEarlyExit();
-    klee_error("EXITING ON ERROR:\n%s\n", errorMessage);
-  }
 }
 
 std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {

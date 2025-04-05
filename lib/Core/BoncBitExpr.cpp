@@ -56,7 +56,7 @@ void NotBitExpr::print(llvm::raw_ostream &os) const {
 
 llvm::json::Value NotBitExpr::toJSON() const {
   return llvm::json::Object{
-      {"type", "unary"}, {"operator", "not"}, {"oprand", expr->toJSON()}};
+      {"type", "unary"}, {"operator", "not"}, {"operand", expr->toJSON()}};
 }
 
 void BinaryBitExpr::print(llvm::raw_ostream &os) const {

@@ -24,13 +24,13 @@ struct SBoxTableInfo {
   std::string name;
   std::size_t input_width;
   std::size_t output_width;
-  std::vector<uint64_t> values;
+  std::vector<uint64_t> value;
 
   friend llvm::json::Value toJSON(const SBoxTableInfo &info) {
     return llvm::json::Object{{"name", info.name},
                               {"input_width", info.input_width},
                               {"output_width", info.output_width},
-                              {"values", std::move(info.values)}};
+                              {"value", std::move(info.value)}};
   }
 };
 
@@ -543,8 +543,8 @@ public:
       LOG("Size: %u", op.second->size);
 
       bool is_constant = true;
-      auto symbol_name = "bonc:state:" + std::to_string(round_index) + "/" +
-                         std::to_string(object_index);
+      auto state_name =
+          std::to_string(round_index) + "/" + std::to_string(object_index);
       std::vector<ref<BitExpr>> update_expressions;
 
       for (auto offset = 0u; offset < op.second->size; offset++) {
@@ -562,10 +562,11 @@ public:
 
       // Make it symbolic if not constant
       if (!is_constant) {
-        executor->executeMakeSymbolic(state, op.first, symbol_name);
+        executor->executeMakeSymbolic(state, op.first,
+                                      "bonc:state:" + state_name);
         object_index++;
         iterations.push_back(
-            {symbol_name, op.second->size, std::move(update_expressions)});
+            {state_name, op.second->size, std::move(update_expressions)});
       }
     }
     round_index++;
@@ -667,12 +668,12 @@ void BoncController::printResult(llvm::raw_ostream &os) const {
     SBoxTableInfo info{};
     info.name = item->name;
     info.input_width = BIT_WIDTH(item->getSize() - 1);
-    info.values.reserve(values.size());
+    info.value.reserve(values.size());
     for (auto i = 0u; i < values.size(); i++) {
-      info.values.push_back(values.at(i)->getZExtValue());
+      info.value.push_back(values.at(i)->getZExtValue());
     }
     info.output_width =
-        BIT_WIDTH(*std::max_element(info.values.begin(), info.values.end()));
+        BIT_WIDTH(*std::max_element(info.value.begin(), info.value.end()));
     sboxes.push_back(toJSON(info));
   }
   result.insert({"inputs", std::move(inputs)});
