@@ -4816,6 +4816,48 @@ void Executor::runFunctionAsMain(Function *f,
     statsTracker->done();
 }
 
+void Executor::runFunction(Function *f, const std::vector<ref<Expr>> &arguments) {
+
+  // force deterministic initialization of memory objects
+  srand(1);
+  srandom(1);
+
+  unsigned NumPtrBytes = Context::get().getPointerWidth() / 8;
+  KFunction *kf = kmodule->functionMap[f];
+  assert(kf);
+
+  ExecutionState *state =
+      new ExecutionState(kmodule->functionMap[f], memory.get());
+
+  if (pathWriter)
+    state->pathOS = pathWriter->open();
+  if (symPathWriter)
+    state->symPathOS = symPathWriter->open();
+
+  if (statsTracker)
+    statsTracker->framePushed(*state, 0);
+
+  assert(arguments.size() == f->arg_size() && "wrong number of arguments");
+  for (unsigned i = 0, e = f->arg_size(); i != e; ++i)
+    bindArgument(kf, i, *state, arguments[i]);
+
+  initializeGlobals(*state);
+
+  executionTree = createExecutionTree(
+      *state, userSearcherRequiresInMemoryExecutionTree(), *interpreterHandler);
+  run(*state);
+  executionTree = nullptr;
+
+  // hack to clear memory objects
+  memory = nullptr;
+
+  globalObjects.clear();
+  globalAddresses.clear();
+
+  if (statsTracker)
+    statsTracker->done();
+}
+
 unsigned Executor::getPathStreamID(const ExecutionState &state) {
   assert(pathWriter);
   return state.pathOS.getID();

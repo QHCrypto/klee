@@ -3,11 +3,13 @@
 #include "ExecutionState.h"
 #include "llvm-13/llvm/IR/Instruction.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/LLVMContext.h"
 #include <memory>
 
 namespace klee::bonc {
 
-constexpr const unsigned BONC_METADATA_KIND = 31;
+constexpr const unsigned BONC_ROUND_METADATA_KIND = llvm::LLVMContext::MD_bonc_round;
+constexpr const unsigned BONC_METAPARAM_METADATA_KIND = llvm::LLVMContext::MD_bonc_metaparam;
 
 class BoncControllerImpl;
 

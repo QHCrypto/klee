@@ -588,9 +588,7 @@ void BoncController::beforeEnterRoundFn(const Executor *executor,
     // indirect call
     return;
   }
-  if (auto md = f->getMetadata(BONC_METADATA_KIND)) {
-    // TODO check md == ::round
-    md->getOperand(0)->print(llvm::errs());
+  if (auto md = f->getMetadata(BONC_ROUND_METADATA_KIND)) {
     pImpl->beforeEnterRoundFn(executor, state, f);
   }
 }

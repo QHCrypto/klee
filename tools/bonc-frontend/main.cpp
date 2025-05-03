@@ -753,6 +753,18 @@ linkWithUclibc(StringRef libDir, std::string opt_suffix,
                FortifyPath.c_str(), errorMsg.c_str());
 }
 
+struct Metaparam {
+  std::string name;
+  std::vector<llvm::APInt> values;
+
+  void debug() {
+    llvm::errs() << "Metaparam: " << name << "\n";
+    for (const auto &v : values) {
+      llvm::errs() << v << "\n";
+    }
+  }
+};
+
 int main(int argc, char **argv, char **envp) {
   atexit(llvm_shutdown); // Call llvm_shutdown() on exit
 
@@ -894,45 +906,6 @@ int main(int argc, char **argv, char **envp) {
                  errorMsg.c_str());
   }
 
-  // FIXME: Change me to std types.
-  int pArgc;
-  char **pArgv;
-  char **pEnvp;
-  if (Environ != "") {
-    std::vector<std::string> items;
-    std::ifstream f(Environ.c_str());
-    if (!f.good())
-      klee_error("unable to open --environ file: %s", Environ.c_str());
-    while (!f.eof()) {
-      std::string line;
-      std::getline(f, line);
-      line = strip(line);
-      if (!line.empty())
-        items.push_back(line);
-    }
-    f.close();
-    pEnvp = new char *[items.size() + 1];
-    unsigned i = 0;
-    for (; i != items.size(); ++i)
-      pEnvp[i] = strdup(items[i].c_str());
-    pEnvp[i] = 0;
-  } else {
-    pEnvp = envp;
-  }
-
-  pArgv = new char *[2]{};
-  pArgc = 1;
-  {
-    std::string &arg = InputFile;
-    unsigned size = InputFile.size() + 1;
-    char *pArg = new char[size];
-
-    std::copy(arg.begin(), arg.end(), pArg);
-    pArg[size - 1] = 0;
-
-    pArgv[0] = pArg;
-  }
-
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = 0;
   KleeHandler *handler = new KleeHandler();
@@ -956,7 +929,54 @@ int main(int argc, char **argv, char **envp) {
 
   externalsAndGlobalsCheck(finalModule);
 
-  interpreter->runFunctionAsMain(entryFn, pArgc, pArgv, pEnvp);
+  std::vector<Metaparam> metaparams;
+  if (entryFn->arg_size() > 0) {
+    if (auto metaparam = entryFn->getMetadata(llvm::LLVMContext::MD_bonc_metaparam)) {
+      metaparam->print(llvm::errs(), mainModule, true);
+      for (const auto& i : metaparam->operands()) {
+        if (auto arg = dyn_cast<MDNode>(i.get())) {
+          if (arg->getNumOperands() != 2) {
+            klee_error("Malformed [[bonc::metaparam]], should be {string, node-of-ints}");
+          }
+          auto name = dyn_cast<MDString>(arg->getOperand(0));
+          if (!name) {
+            klee_error("Malformed [[bonc::metaparam]], first operand should be a string");
+          }
+          auto name_str = name->getString().str();
+          auto values = dyn_cast<MDNode>(arg->getOperand(1));
+          if (!values) {
+            klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+          }
+          if (values->getNumOperands() == 0) {
+            klee_error("[[bonc::metaparam]] of '%s' has no values",
+              name_str.c_str());
+          }
+          std::vector<llvm::APInt> values_vec;
+          for (const auto& v : values->operands()) {
+            auto i = dyn_cast<ConstantAsMetadata>(v.get());
+            if (!i) {
+              klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+            }
+            auto int_val = dyn_cast<ConstantInt>(i->getValue());
+            if (int_val) {
+              values_vec.push_back(int_val->getValue());
+            } else {
+              klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+            }
+          }
+          metaparams.push_back({name_str, std::move(values_vec)});
+        } else {
+          i->printAsOperand(llvm::errs());
+          klee_error("Unexpected metadata type for bonc::metaparam");
+        }
+      }
+    } else {
+      klee_error("Entry function '%s' contains non-[[bonc::metaparam]]-annotated parameters.",
+                 EntryPoint.c_str());
+    }
+  }
+
+  interpreter->runFunction(entryFn, {});
 
   {
     std::string error;
@@ -970,9 +990,6 @@ int main(int argc, char **argv, char **envp) {
     interpreter->printBoncResult(*f);
   }
 
-  // Free all the args.
-  delete[] pArgv[0];
-  delete[] pArgv;
 
   delete interpreter;
   delete handler;

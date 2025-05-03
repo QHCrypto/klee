@@ -25,6 +25,7 @@ extern FILE *klee_message_file;
 
 /// Print "KLEE: ERROR: " followed by the msg in printf format and a
 /// newline on stderr and to warnings.txt, then exit with an error.
+[[noreturn]]
 void klee_error(const char *msg, ...)
     __attribute__((format(printf, 1, 2), noreturn));
 

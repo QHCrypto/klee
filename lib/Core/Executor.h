@@ -549,6 +549,8 @@ public:
 
   void runFunctionAsMain(llvm::Function *f, int argc, char **argv,
                          char **envp) override;
+  void runFunction(llvm::Function *f,
+                   const std::vector<ref<Expr>> &arguments) override;
 
   void printBoncResult(llvm::raw_ostream &os) override {
     bonc.printResult(os);

@@ -30,6 +30,9 @@ namespace klee {
 class ExecutionState;
 class Interpreter;
 class TreeStreamWriter;
+template <typename T>
+class ref;
+class Expr;
 
 class InterpreterHandler {
 public:
@@ -137,6 +140,7 @@ public:
                                  int argc,
                                  char **argv,
                                  char **envp) = 0;
+  virtual void runFunction(llvm::Function *f, const std::vector<ref<Expr>>& arguments) = 0;
 
   virtual void printBoncResult(llvm::raw_ostream &os) = 0;
 
