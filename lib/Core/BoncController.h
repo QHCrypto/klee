@@ -22,6 +22,9 @@ public:
   BoncController();
   ~BoncController();
 
+  BoncController(BoncController &&);
+  BoncController &operator=(BoncController &&);
+
   void beforeEnterRoundFn(const Executor *executor, const ExecutionState &state,
                           const llvm::Instruction *callInst,
                           const std::vector<ref<Expr>> &args);

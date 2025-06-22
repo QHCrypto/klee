@@ -66,11 +66,11 @@ cl::opt<bool> TrackInstructionTime(
     cl::cat(StatsCat));
 
 cl::opt<bool>
-    OutputStats("output-stats", cl::init(true),
+    OutputStats("output-stats", cl::init(false),
                 cl::desc("Write running stats trace file (default=true)"),
                 cl::cat(StatsCat));
 
-cl::opt<bool> OutputIStats("output-istats", cl::init(true),
+cl::opt<bool> OutputIStats("output-istats", cl::init(false),
                            cl::desc("Write instruction level statistics in "
                                     "callgrind format (default=true)"),
                            cl::cat(StatsCat));

@@ -577,6 +577,8 @@ BoncController::BoncController()
     : pImpl{std::make_unique<BoncControllerImpl>()} {}
 
 BoncController::~BoncController() = default;
+BoncController::BoncController(BoncController &&) = default;
+BoncController &BoncController::operator=(BoncController &&) = default;
 
 void BoncController::beforeEnterRoundFn(const Executor *executor,
                                         const ExecutionState &state,

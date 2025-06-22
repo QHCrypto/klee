@@ -354,16 +354,6 @@ std::string KleeHandler::getRunTimeLibraryPath(const char *argv0) {
 static Function *mainFn = nullptr;
 static Function *entryFn = nullptr;
 
-static std::string strip(std::string &in) {
-  unsigned len = in.size();
-  unsigned lead = 0, trail = len;
-  while (lead < len && isspace(in[lead]))
-    ++lead;
-  while (trail > lead && isspace(in[trail - 1]))
-    --trail;
-  return in.substr(lead, trail - lead);
-}
-
 static void parseArguments(int argc, char **argv) {
   cl::SetVersionPrinter(klee::printVersion);
   // This version always reads response files
@@ -765,26 +755,42 @@ struct Metaparam {
   }
 };
 
-int main(int argc, char **argv, char **envp) {
-  atexit(llvm_shutdown); // Call llvm_shutdown() on exit
+std::vector<std::vector<llvm::APInt>>
+spreadMetaparam(const std::vector<Metaparam> &metaparams) {
+  if (metaparams.empty()) {
+    return {{}};
+  }
+  
+  std::vector<std::vector<llvm::APInt>> result;
 
-  KCommandLine::KeepOnlyCategories(
-      {&ChecksCat, &DebugCat, &ExtCallsCat, &ExprCat, &LinkCat, &MemoryCat,
-       &MergeCat, &MiscCat, &ModuleCat, &SearchCat, &SeedingCat, &SolvingCat,
-       &StartCat, &StatsCat, &TerminationCat, &TestGenCat, &ExecTreeCat,
-       &ExecTreeCat});
-  llvm::InitializeNativeTarget();
+  // Initialize the result with the first metaparam values
+  for (const auto &value : metaparams[0].values) {
+    result.push_back({value});
+  }
 
-  parseArguments(argc, argv);
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  // Iterate through the remaining metaparams and build combinations
+  for (size_t i = 1; i < metaparams.size(); ++i) {
+    std::vector<std::vector<llvm::APInt>> newResult;
+    for (const auto &existingCombination : result) {
+      for (const auto &value : metaparams[i].values) {
+        auto newCombination = existingCombination;
+        newCombination.push_back(value);
+        newResult.push_back(std::move(newCombination));
+      }
+    }
+    result = std::move(newResult);
+  }
 
-  sys::SetInterruptFunction(interrupt_handle);
+  return result;
+}
 
+static LLVMContext ctx;
+static Module *mainModule = nullptr;
+std::unique_ptr<Interpreter> createInterpreter(char* argv0, KleeHandler* handler) {
   // Load the bytecode...
   std::string errorMsg;
-  LLVMContext ctx;
-
   std::vector<std::unique_ptr<llvm::Module>> loadedModules;
+
   if (!klee::loadFile(InputFile, ctx, loadedModules, errorMsg)) {
     klee_error("error loading program '%s': %s", InputFile.c_str(),
                errorMsg.c_str());
@@ -799,7 +805,7 @@ int main(int argc, char **argv, char **envp) {
                errorMsg.c_str());
   }
 
-  llvm::Module *mainModule = M.get();
+  mainModule = M.get();
 
   const std::string &module_triple = mainModule->getTargetTriple();
   std::string host_triple = llvm::sys::getDefaultTargetTriple();
@@ -823,7 +829,7 @@ int main(int argc, char **argv, char **envp) {
   // Push the module as the first entry
   loadedModules.emplace_back(std::move(M));
 
-  std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv[0]);
+  std::string LibraryDir = KleeHandler::getRunTimeLibraryPath(argv0);
   Interpreter::ModuleOptions Opts(LibraryDir.c_str(), EntryPoint, opt_suffix,
                                   /*Optimize=*/false,
                                   /*CheckDivZero=*/CheckDivZero,
@@ -908,19 +914,11 @@ int main(int argc, char **argv, char **envp) {
 
   Interpreter::InterpreterOptions IOpts;
   IOpts.MakeConcreteSymbolic = 0;
-  KleeHandler *handler = new KleeHandler();
   Interpreter *interpreter = theInterpreter =
       Interpreter::create(ctx, IOpts, handler);
   assert(interpreter);
   interpreter->setInhibitForking(true);
   handler->setInterpreter(interpreter);
-
-  for (int i = 0; i < argc; i++)
-    handler->getInfoStream() << argv[i] << (i + 1 < argc ? " " : "\n");
-  handler->getInfoStream() << "PID: " << getpid() << "\n";
-
-  // Get the desired main function.  klee_main initializes uClibc
-  // locale and other data and then calls main.
 
   auto finalModule = interpreter->setModule(loadedModules, Opts);
   entryFn = finalModule->getFunction(EntryPoint);
@@ -929,39 +927,72 @@ int main(int argc, char **argv, char **envp) {
 
   externalsAndGlobalsCheck(finalModule);
 
+  return std::unique_ptr<Interpreter>(interpreter);
+}
+
+int main(int argc, char **argv, char **envp) {
+  atexit(llvm_shutdown); // Call llvm_shutdown() on exit
+
+  KCommandLine::KeepOnlyCategories(
+      {&ChecksCat, &DebugCat, &ExtCallsCat, &ExprCat, &LinkCat, &MemoryCat,
+       &MergeCat, &MiscCat, &ModuleCat, &SearchCat, &SeedingCat, &SolvingCat,
+       &StartCat, &StatsCat, &TerminationCat, &TestGenCat, &ExecTreeCat,
+       &ExecTreeCat});
+  llvm::InitializeNativeTarget();
+
+  parseArguments(argc, argv);
+  sys::PrintStackTraceOnErrorSignal(argv[0]);
+
+  sys::SetInterruptFunction(interrupt_handle);
+
+  KleeHandler *handler = new KleeHandler();
+  auto interpreter = createInterpreter(argv[0], handler);
+
+  for (int i = 0; i < argc; i++)
+    handler->getInfoStream() << argv[i] << (i + 1 < argc ? " " : "\n");
+  handler->getInfoStream() << "PID: " << getpid() << "\n";
+
+  // Get the desired main function.  klee_main initializes uClibc
+  // locale and other data and then calls main.
+
   std::vector<Metaparam> metaparams;
   if (entryFn->arg_size() > 0) {
-    if (auto metaparam = entryFn->getMetadata(llvm::LLVMContext::MD_bonc_metaparam)) {
-      metaparam->print(llvm::errs(), mainModule, true);
-      for (const auto& i : metaparam->operands()) {
+    if (auto metaparam =
+            entryFn->getMetadata(llvm::LLVMContext::MD_bonc_metaparam)) {
+      for (const auto &i : metaparam->operands()) {
         if (auto arg = dyn_cast<MDNode>(i.get())) {
           if (arg->getNumOperands() != 2) {
-            klee_error("Malformed [[bonc::metaparam]], should be {string, node-of-ints}");
+            klee_error("Malformed [[bonc::metaparam]], should be {string, "
+                       "node-of-ints}");
           }
           auto name = dyn_cast<MDString>(arg->getOperand(0));
           if (!name) {
-            klee_error("Malformed [[bonc::metaparam]], first operand should be a string");
+            klee_error("Malformed [[bonc::metaparam]], first operand should be "
+                       "a string");
           }
           auto name_str = name->getString().str();
           auto values = dyn_cast<MDNode>(arg->getOperand(1));
           if (!values) {
-            klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+            klee_error("Malformed [[bonc::metaparam]], second operand should "
+                       "be a node-of-ints");
           }
           if (values->getNumOperands() == 0) {
             klee_error("[[bonc::metaparam]] of '%s' has no values",
-              name_str.c_str());
+                       name_str.c_str());
           }
           std::vector<llvm::APInt> values_vec;
-          for (const auto& v : values->operands()) {
+          for (const auto &v : values->operands()) {
             auto i = dyn_cast<ConstantAsMetadata>(v.get());
             if (!i) {
-              klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+              klee_error("Malformed [[bonc::metaparam]], second operand should "
+                         "be a node-of-ints");
             }
             auto int_val = dyn_cast<ConstantInt>(i->getValue());
             if (int_val) {
               values_vec.push_back(int_val->getValue());
             } else {
-              klee_error("Malformed [[bonc::metaparam]], second operand should be a node-of-ints");
+              klee_error("Malformed [[bonc::metaparam]], second operand should "
+                         "be a node-of-ints");
             }
           }
           metaparams.push_back({name_str, std::move(values_vec)});
@@ -971,16 +1002,44 @@ int main(int argc, char **argv, char **envp) {
         }
       }
     } else {
-      klee_error("Entry function '%s' contains non-[[bonc::metaparam]]-annotated parameters.",
+      klee_error("Entry function '%s' contains "
+                 "non-[[bonc::metaparam]]-annotated parameters.",
                  EntryPoint.c_str());
     }
   }
 
-  interpreter->runFunction(entryFn, {});
+  auto all_metaparam_combinations = spreadMetaparam(metaparams);
+  if (all_metaparam_combinations.empty()) {
+    klee_error("No metaparam values found");
+  }
+  if (all_metaparam_combinations.size() > 65536) {
+    klee_error("Too many metaparam combinations found: %zu",
+               all_metaparam_combinations.size());
+  }
+  klee_message("Found %zu metaparam combinations",
+               all_metaparam_combinations.size());
+  for (const auto &combination : all_metaparam_combinations) {
+    std::stringstream name_ss;
+    std::vector<klee::ref<klee::Expr>> args;
+    for (size_t i = 0; i < combination.size(); ++i) {
+      if (i > 0) {
+        name_ss << "_";
+      }
+      name_ss << metaparams.at(i).name << combination.at(i).getSExtValue();
 
-  {
+      args.push_back(klee::ConstantExpr::create(
+          combination.at(i).getZExtValue(),
+          entryFn->getArg(i)->getType()->getIntegerBitWidth()));
+    }
+    auto name = name_ss.str();
+    klee_message("Running with metaparam combination: %s", name.c_str());
+
+    interpreter.reset();
+    interpreter = createInterpreter(argv[0], handler);
+    
+    interpreter->runFunction(entryFn, args);
     std::string error;
-    auto out_path = handler->getOutputFilename("bonc.json");
+    auto out_path = handler->getOutputFilename("bonc_" + name + ".json");
     auto f = klee_open_output_file(out_path, error);
     if (!f) {
       klee_warning("error opening file \"%s\" (%s).", out_path.c_str(),
@@ -989,9 +1048,7 @@ int main(int argc, char **argv, char **envp) {
     }
     interpreter->printBoncResult(*f);
   }
-
-
-  delete interpreter;
+  
   delete handler;
 
   return 0;

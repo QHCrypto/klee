@@ -22,7 +22,9 @@ static bool Initialized = false;
 static Context TheContext;
 
 void Context::initialize(bool IsLittleEndian, Expr::Width PointerWidth) {
-  assert(!Initialized && "Duplicate context initialization!");
+  if (Initialized) {
+    return;
+  }
   TheContext = Context(IsLittleEndian, PointerWidth);
   Initialized = true;
 }
