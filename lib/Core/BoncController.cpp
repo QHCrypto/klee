@@ -5,7 +5,7 @@
 #include "Executor.h"
 
 #include "klee/Expr/Expr.h"
-#include "llvm-13/llvm/IR/InstrTypes.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/Support/JSON.h"
 #include <algorithm>
@@ -168,6 +168,11 @@ public:
       if (!read_root->isConstantArray()) {
         LOG("Read expression with non-constant array root (%s)",
             read_root->name.c_str());
+        abort();
+      }
+      assert(read_root->constantValues.size() > 0);
+      if (read_root->constantValues[0]->getWidth() != Expr::Int8) {
+        LOG("Unsupported S-box input width %d (for now)", read_root->constantValues[0]->getWidth());
         abort();
       }
       sbox_tables.insert(read_root);
